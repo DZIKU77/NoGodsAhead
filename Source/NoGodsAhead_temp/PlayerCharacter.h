@@ -20,6 +20,11 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	void StartSprint();
+	void StopSprint();
+
+	bool bIsSprinting;
+	void StartSlide();
 
 public:	
 	// Called every frame

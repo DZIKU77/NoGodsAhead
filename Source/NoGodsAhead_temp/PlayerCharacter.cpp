@@ -2,6 +2,7 @@
 
 
 #include "PlayerCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -15,7 +16,6 @@ APlayerCharacter::APlayerCharacter()
 void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
 // Called every frame
@@ -37,7 +37,19 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	// Rejestrujemy myszke
 	PlayerInputComponent->BindAxis("Turn", this, &APlayerCharacter::AddControllerYawInput);
 	PlayerInputComponent->BindAxis("LookUp", this, &APlayerCharacter::AddControllerPitchInput);
+
+	// Skakanie
+	PlayerInputComponent->BindAction("Jump",IE_Pressed, this, &APlayerCharacter::Jump);
+	PlayerInputComponent->BindAction("Jump",IE_Released,  this, &APlayerCharacter::StopJumping);
+
+	// Sprint
+	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &APlayerCharacter::StartSprint);
+	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &APlayerCharacter::StopSprint);
+
+	// Slide
+	PlayerInputComponent->BindAction("Slide", IE_Pressed,  this, &APlayerCharacter::StartSlide);
 }
+
 
 // Logika ruchu przod / tyl
 void APlayerCharacter::MoveForward(float Value) {
@@ -47,4 +59,30 @@ void APlayerCharacter::MoveForward(float Value) {
 // Logika ruchu prawo / lewo
 void APlayerCharacter::MoveRight(float Value) {
 	AddMovementInput(GetActorRightVector(), Value);
+}
+
+// Start sprintu
+void APlayerCharacter::StartSprint() {
+	bIsSprinting = true;
+	GetCharacterMovement()->MaxWalkSpeed = 1200.0f;
+}
+
+// Koniec sprintu
+void APlayerCharacter::StopSprint() {
+	bIsSprinting = false;
+	GetCharacterMovement()->MaxWalkSpeed = 600.0f;
+}
+
+// Slizganie
+void APlayerCharacter::StartSlide() {
+	if (bIsSprinting) {
+		Crouch();
+		FVector SlideDirection = GetActorForwardVector();
+		LaunchCharacter(SlideDirection * 1500.0f, true, false);
+		GetCharacterMovement()->MaxWalkSpeedCrouched = 200.0f;
+		StopSprint();
+	}
+	else {
+		Crouch();
+	}
 }
