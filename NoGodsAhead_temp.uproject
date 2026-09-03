@@ -7,7 +7,10 @@
 		{
 			"Name": "NoGodsAhead_temp",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		}
 	]
 }
