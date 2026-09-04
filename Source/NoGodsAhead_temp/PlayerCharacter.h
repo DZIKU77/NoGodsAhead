@@ -16,7 +16,8 @@ public:
 	APlayerCharacter();
 	void MoveForward(float Value);
 	void MoveRight(float Value);
-
+	float ReachDistance = 75.0f;
+	bool bIsGrabbingLedge = false;
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -26,6 +27,12 @@ protected:
 	bool bIsSprinting;
 	void StartCrouch();
 	void EndCrouch();
+
+	void PerformLedgeCheck();
+	void GrabLedge(FVector LedgeLocation, FVector WallNormal);
+	void DropFromLedge();
+	void ClimbUpLedge();
+	
 
 public:	
 	// Called every frame

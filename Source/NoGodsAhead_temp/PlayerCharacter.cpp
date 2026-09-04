@@ -3,6 +3,8 @@
 
 #include "PlayerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Components/CapsuleComponent.h"
 
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -27,6 +29,8 @@ APlayerCharacter::APlayerCharacter()
 	// Domyślne wartości prędkości i hamowania
 	GetCharacterMovement()->MaxWalkSpeed = 600.0f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.0f;
+
+	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
 }
 
 // Called when the game starts or when spawned
@@ -46,6 +50,8 @@ void APlayerCharacter::Tick(float DeltaTime)
 	else {
 		GetCharacterMovement()->GravityScale = 2.5f;
 	}
+
+	PerformLedgeCheck();
 }
 
 // Called to bind functionality to input
@@ -72,6 +78,12 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	// Slide
 	PlayerInputComponent->BindAction("Slide", IE_Pressed,  this, &APlayerCharacter::StartCrouch);
 	PlayerInputComponent->BindAction("Slide", IE_Released,  this, &APlayerCharacter::EndCrouch);
+
+	// Podciagniecie 
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &APlayerCharacter::ClimbUpLedge);
+
+	// Zeskok
+	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &APlayerCharacter::DropFromLedge);
 }
 
 
@@ -106,15 +118,24 @@ void APlayerCharacter::StartCrouch()
 		// 1. Aktywujemy kucnięcie
 		Crouch();
 
-		// 2. Pobieramy wektor kierunku patrzepnia (płasko, bez osi Z)
-		FVector SlideDirection = GetActorForwardVector();
-		SlideDirection.Z = 0.0f;
+		GetCharacterMovement()->GroundFriction = 0.5f;
 
-		// 3. Nakładamy mocny impuls do przodu (zwiększ moc do np. 2200.0f, by poczuć strzał)
-		LaunchCharacter(SlideDirection * 2200.0f, true, false);
+		// 2. Pobieramy wektor kierunku patrzepnia (płasko, bez osi Z)
+		FVector SlideDirection = GetCharacterMovement()->Velocity.GetSafeNormal();
+		if (SlideDirection.IsNearlyZero()) {
+			SlideDirection = GetActorForwardVector();
+		}
+
+		float SlideSpeed = 1800.0f;
+		FVector LaunchVelocity = SlideDirection * SlideSpeed;
+
+		LaunchCharacter(LaunchVelocity, true, false);
 
 		// 4. Wyłączamy sprint, aby po zakończeniu slajdu postać przeszła do kucania/chodu
 		StopSprint();
+	}
+	else {
+		Crouch();
 	}
 }
 
@@ -122,4 +143,80 @@ void APlayerCharacter::EndCrouch()
 {
 	// Natywna funkcja UE4 przywracająca stojącą postać
 	UnCrouch(); 
+
+	GetCharacterMovement()->GroundFriction = 8.0f;
+}
+
+void APlayerCharacter::PerformLedgeCheck() {
+	if (bIsGrabbingLedge) return;
+	FVector Start = GetActorLocation();
+	FVector Forward = GetActorForwardVector();
+	FVector End = Start + (Forward * ReachDistance);
+
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	FHitResult ForwardHit;
+
+	bool bHitWall = GetWorld()->LineTraceSingleByChannel(ForwardHit, Start, End, ECC_Visibility, Params);
+
+	DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 0.1f, 0, 2.0f);
+
+	if (bHitWall) {
+		FHitResult HeightHit;
+		FVector HeightStart = ForwardHit.ImpactPoint + (Forward * 10.0f) + FVector(0.0f, 0.0f, 100.0f);
+
+		FVector HeightEnd = ForwardHit.ImpactPoint + (Forward * 10.0f);
+
+		bool bHitLedge = GetWorld()->LineTraceSingleByChannel(HeightHit, HeightStart, HeightEnd, ECC_Visibility, Params);
+
+		DrawDebugLine(GetWorld(), HeightStart, HeightEnd, FColor::Green, false, 0.1f, 0, 2.0f);
+
+		if (bHitLedge) {
+			GrabLedge(HeightHit.ImpactPoint, ForwardHit.ImpactNormal);
+		}
+	}
+
+	
+}
+
+void APlayerCharacter::GrabLedge(FVector LedgeLocation, FVector WallNormal) {
+	bIsGrabbingLedge = true;
+
+	// GetCharacterMovement()->SetMovementMode(MOVE_None);
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+	float Radius = GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	float HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+
+	FVector TargetLocation = LedgeLocation;
+	TargetLocation -= (GetActorForwardVector() * Radius);
+	TargetLocation.Z -= HalfHeight;
+
+	SetActorLocation(TargetLocation);
+
+	SetActorRotation((-WallNormal).Rotation());
+}
+
+void APlayerCharacter::DropFromLedge(){
+	if (!bIsGrabbingLedge) return;
+	bIsGrabbingLedge = false;
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+}
+
+void APlayerCharacter::ClimbUpLedge() {
+	if (!bIsGrabbingLedge) return;
+
+	bIsGrabbingLedge = false;
+
+	float Radius = GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	float HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+
+	FVector NewLocation = GetActorLocation();
+	NewLocation += (GetActorForwardVector() * (Radius * 2.0f));
+	NewLocation.Z += (HalfHeight * 2.0f);
+
+	SetActorLocation(NewLocation);
+
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 }
