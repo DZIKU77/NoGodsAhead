@@ -5,6 +5,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Components/CapsuleComponent.h"
+#include "TimerManager.h"
 
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -52,6 +53,37 @@ void APlayerCharacter::Tick(float DeltaTime)
 	}
 
 	PerformLedgeCheck();
+
+	if (bIsSprinting)
+	{
+		// Jeśli gracz faktycznie się porusza
+		if (GetVelocity().Size() > 0.0f && CurrentStamina > 0.0f)
+		{
+			ConsumeStamina(SprintStaminaCost * DeltaTime);
+		}
+		else
+		{
+			// Gdy stamina się skończy – zatrzymujemy sprint
+			StopSprint();
+		}
+	}
+	// 2. Wspinanie też zjada staminę
+	else if (bIsGrabbingLedge)
+	{
+		ConsumeStamina(SprintStaminaCost * DeltaTime);
+		if (CurrentStamina <= 0.0f)
+		{
+			DropFromLedge();
+		}
+	}
+	// 3. Odnawianie staminy
+	else if (bCanRegenStamina && CurrentStamina < MaxStamina)
+	{
+		CurrentStamina = FMath::Clamp(CurrentStamina + (StaminaRegenRate * DeltaTime), 0.0f, MaxStamina);
+	}
+
+	// Podgląd staminy w lewym górnym rogu
+	GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Yellow, FString::Printf(TEXT("Stamina: %f"), CurrentStamina));
 }
 
 // Called to bind functionality to input
@@ -99,8 +131,11 @@ void APlayerCharacter::MoveRight(float Value) {
 
 // Start sprintu
 void APlayerCharacter::StartSprint() {
-	bIsSprinting = true;
-	GetCharacterMovement()->MaxWalkSpeed = 1200.0f;
+	if (CurrentStamina > 0.0f && GetCharacterMovement()->IsMovingOnGround())
+	{
+		bIsSprinting = true;
+		GetCharacterMovement()->MaxWalkSpeed = 900.0f; // Zwiększamy prędkość chodu
+	}
 }
 
 // Koniec sprintu
@@ -219,4 +254,28 @@ void APlayerCharacter::ClimbUpLedge() {
 	SetActorLocation(NewLocation);
 
 	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+}
+
+void APlayerCharacter::ConsumeStamina(float Amount) {
+	CurrentStamina = FMath::Clamp(CurrentStamina - Amount, 0.0f, MaxStamina);
+	bCanRegenStamina = false;
+
+	GetWorldTimerManager().ClearTimer(StaminaRegenTimerHandle);
+	GetWorldTimerManager().SetTimer(StaminaRegenTimerHandle, this, &APlayerCharacter::ResetStaminaRegen, RegenDelay, false);
+}
+
+void APlayerCharacter::ResetStaminaRegen() {
+	bCanRegenStamina = true;
+}
+
+void APlayerCharacter::Jump() {
+	if (bIsGrabbingLedge)
+	{
+		ClimbUpLedge();
+	}
+	else if (CurrentStamina >= JumpStaminaCost)
+	{
+		ConsumeStamina(JumpStaminaCost);
+		Super::Jump();
+	}
 }

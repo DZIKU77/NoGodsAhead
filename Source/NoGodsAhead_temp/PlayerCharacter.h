@@ -18,6 +18,23 @@ public:
 	void MoveRight(float Value);
 	float ReachDistance = 75.0f;
 	bool bIsGrabbingLedge = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina")
+		float MaxStamina = 100.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina")
+		float CurrentStamina = 100.0f;
+	UPROPERTY(EditAnywhere, Category = "Stamina")
+		float SprintStaminaCost = 15.0f; // /sek
+	UPROPERTY(EditAnywhere, Category = "Stamina")
+		float JumpStaminaCost = 10.0f; // /skok
+	UPROPERTY(EditAnywhere, Category = "Stamina")
+		float StaminaRegenRate = 20.0f; // ile +stamina / sek
+	UPROPERTY(EditAnywhere, Category = "Stamina")
+		float RegenDelay = 1.5f; // Delay przed regeneracja
+
+	FTimerHandle StaminaRegenTimerHandle;
+	bool bCanRegenStamina = true;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -27,12 +44,15 @@ protected:
 	bool bIsSprinting;
 	void StartCrouch();
 	void EndCrouch();
+	void Jump();
 
 	void PerformLedgeCheck();
 	void GrabLedge(FVector LedgeLocation, FVector WallNormal);
 	void DropFromLedge();
 	void ClimbUpLedge();
 	
+	void ConsumeStamina(float Amount);
+	void ResetStaminaRegen();
 
 public:	
 	// Called every frame
