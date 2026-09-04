@@ -10,6 +10,23 @@ APlayerCharacter::APlayerCharacter()
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	GetCharacterMovement()->GravityScale = 2.5f;
+
+	GetCharacterMovement()->JumpZVelocity = 800.0f;
+
+	GetCharacterMovement()->AirControl = 0.35f;
+
+	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+
+	// Zmniejszenie wysokości kapsuły przy kucaniu (domyślnie stojąca ma 88.0f)
+	GetCharacterMovement()->CrouchedHalfHeight = 35.0f;
+
+	// Ustawienie prędkości poruszania się w kucyku
+	GetCharacterMovement()->MaxWalkSpeedCrouched = 200.0f;
+
+	// Domyślne wartości prędkości i hamowania
+	GetCharacterMovement()->MaxWalkSpeed = 600.0f;
+	GetCharacterMovement()->BrakingDecelerationWalking = 2000.0f;
 }
 
 // Called when the game starts or when spawned
@@ -23,6 +40,12 @@ void APlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (GetCharacterMovement()->IsFalling() && GetVelocity().Z < 0) {
+		GetCharacterMovement()->GravityScale = 4.0f;
+	}
+	else {
+		GetCharacterMovement()->GravityScale = 2.5f;
+	}
 }
 
 // Called to bind functionality to input
@@ -47,7 +70,8 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &APlayerCharacter::StopSprint);
 
 	// Slide
-	PlayerInputComponent->BindAction("Slide", IE_Pressed,  this, &APlayerCharacter::StartSlide);
+	PlayerInputComponent->BindAction("Slide", IE_Pressed,  this, &APlayerCharacter::StartCrouch);
+	PlayerInputComponent->BindAction("Slide", IE_Released,  this, &APlayerCharacter::EndCrouch);
 }
 
 
@@ -74,15 +98,28 @@ void APlayerCharacter::StopSprint() {
 }
 
 // Slizganie
-void APlayerCharacter::StartSlide() {
-	if (bIsSprinting) {
+void APlayerCharacter::StartCrouch()
+{
+	// Slajd wykonujemy tylko w trakcie biegu i gdy postać stoi na ziemi
+	if (bIsSprinting && GetCharacterMovement()->IsMovingOnGround())
+	{
+		// 1. Aktywujemy kucnięcie
 		Crouch();
+
+		// 2. Pobieramy wektor kierunku patrzepnia (płasko, bez osi Z)
 		FVector SlideDirection = GetActorForwardVector();
-		LaunchCharacter(SlideDirection * 1500.0f, true, false);
-		GetCharacterMovement()->MaxWalkSpeedCrouched = 200.0f;
+		SlideDirection.Z = 0.0f;
+
+		// 3. Nakładamy mocny impuls do przodu (zwiększ moc do np. 2200.0f, by poczuć strzał)
+		LaunchCharacter(SlideDirection * 2200.0f, true, false);
+
+		// 4. Wyłączamy sprint, aby po zakończeniu slajdu postać przeszła do kucania/chodu
 		StopSprint();
 	}
-	else {
-		Crouch();
-	}
+}
+
+void APlayerCharacter::EndCrouch()
+{
+	// Natywna funkcja UE4 przywracająca stojącą postać
+	UnCrouch(); 
 }

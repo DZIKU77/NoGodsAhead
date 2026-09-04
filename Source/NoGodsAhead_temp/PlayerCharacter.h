@@ -24,7 +24,8 @@ protected:
 	void StopSprint();
 
 	bool bIsSprinting;
-	void StartSlide();
+	void StartCrouch();
+	void EndCrouch();
 
 public:	
 	// Called every frame
