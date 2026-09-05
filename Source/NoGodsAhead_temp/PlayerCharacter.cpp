@@ -38,6 +38,18 @@ APlayerCharacter::APlayerCharacter()
 void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (DefaultWeaponClass) {
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = GetInstigator();
+
+		EquippedWeapon = GetWorld()->SpawnActor<AWeaponBase>(DefaultWeaponClass, GetActorLocation(), GetActorRotation(), SpawnParams);
+
+		if (EquippedWeapon) {
+			EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("WeaponSocket"));
+		}
+	}
 }
 
 // Called every frame
@@ -116,6 +128,10 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
 	// Zeskok
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &APlayerCharacter::DropFromLedge);
+
+	// Strzal
+	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &APlayerCharacter::StartFire);
+	PlayerInputComponent->BindAction("Fire", IE_Released, this, &APlayerCharacter::StopFire);
 }
 
 
@@ -277,5 +293,22 @@ void APlayerCharacter::Jump() {
 	{
 		ConsumeStamina(JumpStaminaCost);
 		Super::Jump();
+	}
+}
+
+void APlayerCharacter::StartFire()
+{
+	// Nie pobieramy tu żadnych GetActorEyesViewPoint! Broń sama weźmie pozycję z kamery.
+	if (EquippedWeapon && !bIsGrabbingLedge)
+	{
+		EquippedWeapon->StartFire();
+	}
+}
+
+void APlayerCharacter::StopFire()
+{
+	if (EquippedWeapon)
+	{
+		EquippedWeapon->StopFire(); // Przekazujemy komendę puszczenia do broni
 	}
 }

@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "WeaponBase.h"
 #include "PlayerCharacter.generated.h"
+
 
 UCLASS()
 class NOGODSAHEAD_TEMP_API APlayerCharacter : public ACharacter
@@ -32,6 +34,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Stamina")
 		float RegenDelay = 1.5f; // Delay przed regeneracja
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+		AWeaponBase* EquippedWeapon;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+		TSubclassOf<AWeaponBase> DefaultWeaponClass;
+
 	FTimerHandle StaminaRegenTimerHandle;
 	bool bCanRegenStamina = true;
 
@@ -53,6 +60,9 @@ protected:
 	
 	void ConsumeStamina(float Amount);
 	void ResetStaminaRegen();
+
+	void StartFire();
+	void StopFire();
 
 public:	
 	// Called every frame
