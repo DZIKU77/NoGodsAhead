@@ -6,6 +6,7 @@
 #include "DrawDebugHelpers.h"
 #include "Components/CapsuleComponent.h"
 #include "TimerManager.h"
+#include "MeleeWeaponBase.h"
 
 // Sets default values
 APlayerCharacter::APlayerCharacter()
@@ -32,6 +33,13 @@ APlayerCharacter::APlayerCharacter()
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.0f;
 
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+
+	// 1. Tworzymy subobiekt dla kija
+	BaseballBatMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BaseballBatMesh"));
+
+	// 2. Przypinamy kij do głównego Mesha postaci (np. do socketu w dłoni lub na plecach)
+	// Zamień "WeaponSocket" na nazwę swojego socketu na kości hand_r / pelvis
+	BaseballBatMesh->SetupAttachment(GetMesh(), FName("WeaponSocket"));
 }
 
 // Called when the game starts or when spawned
@@ -39,15 +47,20 @@ void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (DefaultWeaponClass) {
+	DefaultCapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+
+	// Spawnowanie broni białej na starcie gry
+	if (WeaponClass)
+	{
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
 		SpawnParams.Instigator = GetInstigator();
 
-		EquippedWeapon = GetWorld()->SpawnActor<AWeaponBase>(DefaultWeaponClass, GetActorLocation(), GetActorRotation(), SpawnParams);
-
-		if (EquippedWeapon) {
-			EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("WeaponSocket"));
+		EquippedWeapon = GetWorld()->SpawnActor<AMeleeWeaponBase>(WeaponClass, SpawnParams);
+		if (EquippedWeapon)
+		{
+			// Przypinamy kij do socketu w dłoni postaci (zmień "hand_rSocket" na nazwę swojego socketu w Skeletonie)
+			EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, FName("hand_rSocket"));
 		}
 	}
 }
@@ -66,17 +79,15 @@ void APlayerCharacter::Tick(float DeltaTime)
 
 	PerformLedgeCheck();
 
-	if (bIsSprinting)
+	// Drenaż staminy podczas trwania sprintu
+	if (bWantsToSprint && GetVelocity().Size() > 0.0f)
 	{
-		// Jeśli gracz faktycznie się porusza
-		if (GetVelocity().Size() > 0.0f && CurrentStamina > 0.0f)
+		CurrentStamina = FMath::Max(0.0f, CurrentStamina - StaminaDrainRate * DeltaTime);
+
+		// Jeśli stamina spanie do 0, wywołujemy ToggleSprint, aby automatycznie przejść do chodu
+		if (CurrentStamina <= 0.0f)
 		{
-			ConsumeStamina(SprintStaminaCost * DeltaTime);
-		}
-		else
-		{
-			// Gdy stamina się skończy – zatrzymujemy sprint
-			StopSprint();
+			ToggleSprint();
 		}
 	}
 	// 2. Wspinanie też zjada staminę
@@ -116,8 +127,7 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAction("Jump",IE_Released,  this, &APlayerCharacter::StopJumping);
 
 	// Sprint
-	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &APlayerCharacter::StartSprint);
-	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &APlayerCharacter::StopSprint);
+	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &APlayerCharacter::ToggleSprint);
 
 	// Slide
 	PlayerInputComponent->BindAction("Slide", IE_Pressed,  this, &APlayerCharacter::StartCrouch);
@@ -132,6 +142,12 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	// Strzal
 	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &APlayerCharacter::StartFire);
 	PlayerInputComponent->BindAction("Fire", IE_Released, this, &APlayerCharacter::StopFire);
+
+	// Leżenie
+	PlayerInputComponent->BindAction("Prone", IE_Pressed, this, &APlayerCharacter::ToggleProne);
+
+	// Uderzenie melee
+	PlayerInputComponent->BindAction("MeleeAttack", IE_Pressed, this, &APlayerCharacter::PrimaryAttack);
 }
 
 
@@ -164,7 +180,7 @@ void APlayerCharacter::StopSprint() {
 void APlayerCharacter::StartCrouch()
 {
 	// Slajd wykonujemy tylko w trakcie biegu i gdy postać stoi na ziemi
-	if (bIsSprinting && GetCharacterMovement()->IsMovingOnGround())
+	if (bWantsToSprint && GetCharacterMovement()->IsMovingOnGround())
 	{
 		// 1. Aktywujemy kucnięcie
 		Crouch();
@@ -238,18 +254,18 @@ void APlayerCharacter::GrabLedge(FVector LedgeLocation, FVector WallNormal) {
 	GetCharacterMovement()->Velocity = FVector::ZeroVector;
 
 	float Radius = GetCapsuleComponent()->GetUnscaledCapsuleRadius();
-	float HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+float HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 
-	FVector TargetLocation = LedgeLocation;
-	TargetLocation -= (GetActorForwardVector() * Radius);
-	TargetLocation.Z -= HalfHeight;
+FVector TargetLocation = LedgeLocation;
+TargetLocation -= (GetActorForwardVector() * Radius);
+TargetLocation.Z -= HalfHeight;
 
-	SetActorLocation(TargetLocation);
+SetActorLocation(TargetLocation);
 
-	SetActorRotation((-WallNormal).Rotation());
+SetActorRotation((-WallNormal).Rotation());
 }
 
-void APlayerCharacter::DropFromLedge(){
+void APlayerCharacter::DropFromLedge() {
 	if (!bIsGrabbingLedge) return;
 	bIsGrabbingLedge = false;
 	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
@@ -298,17 +314,82 @@ void APlayerCharacter::Jump() {
 
 void APlayerCharacter::StartFire()
 {
-	// Nie pobieramy tu żadnych GetActorEyesViewPoint! Broń sama weźmie pozycję z kamery.
-	if (EquippedWeapon && !bIsGrabbingLedge)
-	{
-		EquippedWeapon->StartFire();
+	// Jeśli dojdzie broń palna w przyszłości, tu dasz jej wywołanie. Na razie wywołujemy ataki bronią:
+	PrimaryAttack();
+}
+
+void APlayerCharacter::StopFire() {
+
+}
+
+void APlayerCharacter::ToggleSprint() {
+	if (bIsProneState) {
+		StopProne();
+	}
+
+	bWantsToSprint = !bWantsToSprint;
+	// Jeśli włączylismy sprint i stamina dostepna
+	if (bWantsToSprint && CurrentStamina > 0.0f) {
+		GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+	}
+	else {
+		bWantsToSprint = false;
+		GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 	}
 }
 
-void APlayerCharacter::StopFire()
+void APlayerCharacter::ToggleProne()
+{
+	if (bIsProneState)
+	{
+		StopProne();
+	}
+	else
+	{
+		StartProne();
+	}
+}
+
+void APlayerCharacter::StartProne()
+{
+	if (GetCharacterMovement()->IsFalling() || bIsGrabbingLedge) return;
+
+	if (bWantsToSprint)
+	{
+		bWantsToSprint = false;
+	}
+
+	bIsProneState = true;
+
+	GetCharacterMovement()->MaxWalkSpeed = ProneSpeed;
+	GetCapsuleComponent()->SetCapsuleHalfHeight(ProneCapsuleHalfHeight, true);
+}
+
+void APlayerCharacter::StopProne()
+{
+	if (!bIsProneState) return;
+
+	FHitResult Hit;
+	FVector Start = GetActorLocation();
+	FVector End = Start + FVector(0.0f, 0.0f, DefaultCapsuleHalfHeight - ProneCapsuleHalfHeight);
+
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	bool bBlocked = GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
+
+	if (!bBlocked)
+	{
+		bIsProneState = false;
+		GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
+		GetCapsuleComponent()->SetCapsuleHalfHeight(DefaultCapsuleHalfHeight, true);
+	}
+}
+
+void APlayerCharacter::PrimaryAttack()
 {
 	if (EquippedWeapon)
 	{
-		EquippedWeapon->StopFire(); // Przekazujemy komendę puszczenia do broni
+		EquippedWeapon->Swing();
 	}
 }

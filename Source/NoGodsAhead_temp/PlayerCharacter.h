@@ -1,12 +1,13 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "WeaponBase.h"
 #include "PlayerCharacter.generated.h"
 
+// Deklaracja wyprzedzająca MUSI być poza klasą APlayerCharacter
+class AMeleeWeaponBase;
 
 UCLASS()
 class NOGODSAHEAD_TEMP_API APlayerCharacter : public ACharacter
@@ -21,6 +22,11 @@ public:
 	float ReachDistance = 75.0f;
 	bool bIsGrabbingLedge = false;
 
+	float WalkSpeed = 600.0f;
+	float SprintSpeed = 900.0f;
+
+	float StaminaDrainRate = 15.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina")
 		float MaxStamina = 100.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina")
@@ -34,13 +40,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Stamina")
 		float RegenDelay = 1.5f; // Delay przed regeneracja
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
-		AWeaponBase* EquippedWeapon;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
-		TSubclassOf<AWeaponBase> DefaultWeaponClass;
-
 	FTimerHandle StaminaRegenTimerHandle;
 	bool bCanRegenStamina = true;
+
+	UFUNCTION(BlueprintCallable, Category = "Movement")
+		bool IsProne() const { return bIsProneState; }
 
 protected:
 	// Called when the game starts or when spawned
@@ -57,14 +61,44 @@ protected:
 	void GrabLedge(FVector LedgeLocation, FVector WallNormal);
 	void DropFromLedge();
 	void ClimbUpLedge();
-	
+
 	void ConsumeStamina(float Amount);
 	void ResetStaminaRegen();
 
 	void StartFire();
 	void StopFire();
 
-public:	
+	bool bWantsToSprint = false;
+	void ToggleSprint();
+
+	// --- PRONE ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Prone")
+		float ProneSpeed = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Prone")
+		float ProneCapsuleHalfHeight = 30.0f;
+
+	bool bIsProneState = false;
+
+	float DefaultCapsuleHalfHeight;
+
+	void ToggleProne();
+	void StartProne();
+	void StopProne();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+		class UStaticMeshComponent* BaseballBatMesh;
+
+	// --- COMBAT ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+		TSubclassOf<AMeleeWeaponBase> WeaponClass;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+		AMeleeWeaponBase* EquippedWeapon;
+
+	void PrimaryAttack();
+
+public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
